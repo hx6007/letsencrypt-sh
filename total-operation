@@ -1,0 +1,151 @@
+下载证书
+git clone https://github.com/letsencrypt/letsencrypt
+
+生成证书
+./letsencrypt-auto certonly --standalone --email email@qq.com -d photos-stg.lolatc.com
+
+续证书
+./letsencrypt-auto certonly --renew-by-default --email email@qq.com -d staging.lolatc.com
+
+撤销证书
+./certbot-auto revoke --cert-path /etc/letsencrypt/archive/域名/cert1.pem
+
+最终脚本如下
+
+判断日期脚本
+vim /root/sh/letsencrypt_expiresdate.sh
+
+#!/bin/bash
+expiresdate=`cat /var/log/letsencrypt/renew.log | grep "/etc/letsencrypt/live/" | grep "expires on" | head -n 1 | awk -F " " '{ print $4 }'`
+first_stamp=`date -d "$expiresdate 00:00:00" +%s`
+today_stamp=`date +%s`                          
+let day_stamp=($first_stamp - $today_stamp)    
+let day=($day_stamp/86400)                     
+echo $day
+if [[ $day -gt 10 ]] ;then
+echo "more then 10"
+    exit 1
+else
+/bin/sh /root/sh/letsencrypt_renew.sh
+fi
+
+
+
+vim /root/sh/letsencrypt_renew.sh
+
+#!/bin/sh
+/opt/nginx/sbin/nginx -s stop
+/usr/local/src/letsencrypt-auto renew -nvv --standalone > /var/log/letsencrypt/renew.log 2>&1
+LE_STATUS=$?
+/opt/nginx/sbin/nginx
+
+if [ "$LE_STATUS" != 0 ]; then
+    echo Automated renewal failed:
+    cat /var/log/letsencrypt/renew.log
+    exit 1
+fi
+
+
+
+为了防止nginx没启动，专门做一个监测nginx状态的脚本，并执行定时任务。
+vim nginx_status.sh
+
+#！/bin/bash
+ps xua | grep nginx | grep master >/dev/null 2>&1 
+NGINX_STATUS=$?
+   if [ "$NGINX_STATUS" != 0 ]; then
+	/opt/nginx/sbin/nginx
+	exit 1
+fi
+
+
+
+
+编辑 crontab 配置文件或执行 crontab -e 添加 cron 任务
+10 01 * * * /usr/bin/sh /root/sh/letsencrypt_expiresdate.sh
+10 02 * * * /usr/bin/sh /root/sh/nginx_status.sh
+
+
+
+nginx配置
+
+server {
+        listen 80;
+        server_name    域名;
+        rewrite ^(.*)$  https://$host$1 permanent;
+        }
+
+
+server {
+    listen      443;
+    server_name  域名;
+    root         路径;
+
+    passenger_enabled on;
+    rails_env    production;
+  ssl on;
+      ssl_certificate /etc/letsencrypt/live/域名/fullchain.pem;
+      ssl_certificate_key /etc/letsencrypt/live/域名/privkey.pem;
+
+    location / {
+       add_header Access-Control-Allow-Origin *;
+        }
+
+}
+
+
+
+
+
+反向代理nginx配置
+server {
+        listen 80;
+        server_name     我的域名;
+        rewrite ^(.*)$  https://$host$1 permanent;
+        }
+
+server {
+        listen 443;
+        server_name 我的域名;
+        ssl on;
+        ssl_certificate /etc/letsencrypt/live/我的域名/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/我的域名/privkey.pem;
+        ssl_session_timeout 5m;
+        ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+        #ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:HIGH:!aNULL:!MD5:!RC4:!DHE;
+        ssl_ciphers AES256+EECDH:AES256+EDH:!aNULL;
+
+	ssl_prefer_server_ciphers on;
+
+
+
+
+        location / {
+                proxy_pass  http://192.168.1.160:8080;
+               # proxy_set_header   Host             Origin http://$Host;;
+               # proxy_set_header   X-Real-IP        $remote_addr;
+               #proxy_set_header   X-Forwarded-For  $proxy_add_x_forwarded_for;
+                proxy_next_upstream error timeout invalid_header http_500 http_502 http_503 http_504;
+                proxy_max_temp_file_size 0;
+                proxy_connect_timeout      90;
+                proxy_send_timeout         90;
+                proxy_read_timeout         90;
+                proxy_buffer_size          128k;
+                proxy_buffers              32 32k;
+                proxy_busy_buffers_size    128k;
+                proxy_temp_file_write_size 256k;
+                client_max_body_size    250m;
+		proxy_set_header  Host $http_host;
+		proxy_redirect off;
+		proxy_set_header  X-Forwarded-For $proxy_add_x_forwarded_for;
+  		proxy_set_header  X-Forwarded-Proto $scheme;
+  		proxy_set_header  X-Forwarded-Ssl on; # Optional
+  		proxy_set_header  X-Forwarded-Port $server_port;
+  		proxy_set_header  X-Forwarded-Host $host;
+                }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   html;
+            }
+   }
