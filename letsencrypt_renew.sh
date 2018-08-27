@@ -1,5 +1,5 @@
 #!/bin/sh
-/opt/nginx/sbin/nginx -s stop
+/usr/local/nginx/sbin/nginx -s stop
 /usr/local/src/letsencrypt/letsencrypt-auto renew -nvv --standalone > /var/log/letsencrypt/renew.log 2>&1
 LE_STATUS=$?
 /opt/nginx/sbin/nginx
