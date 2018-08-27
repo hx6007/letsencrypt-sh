@@ -1,0 +1,1 @@
+./letsencrypt-auto certonly --standalone --email myemail@qq.com -d www.example.cn
