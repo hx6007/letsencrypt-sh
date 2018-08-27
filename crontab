@@ -1,0 +1,3 @@
+crontab -e 
+10 01 * * * /usr/bin/sh /root/sh/letsencrypt_expiresdate.sh
+10 02 * * * /usr/bin/sh /root/sh/nginx_status.sh
