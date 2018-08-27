@@ -1,4 +1,4 @@
-#！/bin/bash
+#! /bin/bash
 ps xua | grep nginx | grep master >/dev/null 2>&1
 LE_STATUS=$?
    if [ "$LE_STATUS" != 0 ]; then
