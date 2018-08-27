@@ -1,1 +1,4 @@
+下载证书
+git clone https://github.com/letsencrypt/letsencrypt
+
 ./letsencrypt-auto certonly --standalone --email myemail@qq.com -d www.example.cn
